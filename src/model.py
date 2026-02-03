@@ -1,7 +1,7 @@
 from datetime import date
-from typing import Set
+from typing import List, Set
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class Member(BaseModel):
@@ -11,23 +11,28 @@ class Member(BaseModel):
     max_shifts: int = Field(default=4, ge=0)
 
 
-class ServiceTemplate(BaseModel):
-    event_template: str
-    role: str
-    min_qty: int = Field(ge=0)
-    max_qty: int
-
-    @field_validator("max_qty")
-    @classmethod
-    def check_max_qty(cls, v: int, info):
-        if "min_qty" in info.data and v < info.data["min_qty"]:
-            raise ValueError("max_qty must be greater than or equal to min_qty")
-        return v
-
-
 class AgendaEntry(BaseModel):
     date: date
     event_template: str
+
+
+class TemplateRule(BaseModel):
+    role: str
+    min_qty: int = Field(ge=0)
+    max_qty: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def check_max_ge_min(self):
+        if self.max_qty < self.min_qty:
+            raise ValueError(
+                f"Role '{self.role}': max_qty ({self.max_qty}) must be >= min_qty ({self.min_qty})"
+            )
+        return self
+
+
+class EventTemplate(BaseModel):
+    name: str
+    rules: List[TemplateRule]
 
 
 class RoleDemand(BaseModel):
@@ -42,9 +47,8 @@ class RoleDemand(BaseModel):
     def is_mandatory(self):
         return self.min_qty > 0
 
-    @field_validator("max_qty")
-    @classmethod
-    def check_max_qty(cls, v: int, info):
-        if "min_qty" in info.data and v < info.data["min_qty"]:
+    @model_validator(mode="after")
+    def check_max_ge_min(self):
+        if self.max_qty < self.min_qty:
             raise ValueError("max_qty must be greater than or equal to min_qty")
-        return v
+        return self
