@@ -1,11 +1,12 @@
 import os
 from datetime import date
+from pprint import pprint
 from typing import Dict, List, Set, Tuple
 
 import pandas as pd
 
 from .config import FilesConfig
-from .model import AgendaEntry, EventTemplate, Member, RoleDemand, TemplateRule
+from .model import Event, EventTemplate, Member, RoleDemand, TemplateRule
 from .utils import get_key_fingerprint, parse_dates_safely
 
 DEFAULT_DATA_FOLDER = "data"
@@ -52,9 +53,6 @@ def load_members(members_csv_filepath: str) -> Tuple[List[Member], Dict[str, int
         )
         members.append(new_member)
 
-    print("Members loaded:", members)
-    print("Fingerprint map:", fingerprint_map)
-
     return members, fingerprint_map
 
 
@@ -70,7 +68,7 @@ def load_unavailability(
 
     for _, row in df.iterrows():
         raw_name = row["name"]
-        day = row["data"]
+        day = row["date"]
 
         search_key = get_key_fingerprint(raw_name)
         if search_key not in fingerprint_map:
@@ -98,32 +96,49 @@ def load_templates(templates_csv_filepath: str) -> Dict[str, EventTemplate]:
                     role=row["role"], min_qty=row["min_qty"], max_qty=row["max_qty"]
                 )
             )
-        templates[name] = EventTemplate(name=str(name), rules=rules)
-
-    print("Templates loaded:", templates)
+        templates[name] = EventTemplate(name=str(name).strip(), rules=rules)
 
     return templates
 
 
-def load_events(events_csv_filepath: str) -> List[AgendaEntry]:
+def load_events(events_csv_filepath: str) -> List[Event]:
     if not os.path.exists(events_csv_filepath):
         raise FileNotFoundError(f"File not found: {events_csv_filepath}")
     df = pd.read_csv(events_csv_filepath)
     df = parse_dates_safely(df, "date")
-    pass
+
+    events = []
+
+    for _, row in df.iterrows():
+        events.append(
+            Event(date=row["date"], event_template=row["event_template"].strip())
+        )
+
+    return sorted(events, key=lambda x: x.date)
 
 
 def build_standard_schedule(
-    event_csv_filepath: str, template_csv_filepath: str
+    events_list: List[Event], templates_map: Dict[str, EventTemplate]
 ) -> List[RoleDemand]:
-    if not os.path.exists(event_csv_filepath):
-        raise FileNotFoundError(f"File not found: {event_csv_filepath}")
+    demands = []
+    for event in events_list:
+        template = templates_map.get(event.event_template)
+        if not template:
+            raise ValueError(
+                f"There's no registered template with name {template}, used in event at {event.date}"
+            )
 
-    if not os.path.exists(template_csv_filepath):
-        raise FileNotFoundError(f"File not found: {template_csv_filepath}")
+        for rule in template.rules:
+            demand = RoleDemand(
+                date=event.date,
+                event_type=template.name,
+                role=rule.role,
+                min_qty=rule.min_qty,
+                max_qty=rule.max_qty,
+            )
+            demands.append(demand)
 
-    events_grouped = load_events(event_csv_filepath)
-    templates = load_templates(template_csv_filepath)
+    return demands
 
 
 def apply_custom_overrides(
@@ -152,22 +167,25 @@ def load_data(
     print(f"Start loading data from {data_folder}")
 
     path_members = os.path.join(data_folder, config.members_file)
-    path_unavailability = os.path.join(data_folder, config.unavailability_file)
+    path_unavailability = os.path.join(data_folder, config.unavailabilities_file)
     path_schedule = os.path.join(data_folder, config.schedule_file)
     path_templates = os.path.join(data_folder, config.templates_file)
     path_custom = os.path.join(data_folder, config.custom_demands_file)
 
-    members, fingerprint_map = load_members(path_members)
+    members_list, fingerprint_map = load_members(path_members)
 
     unavailability_map = load_unavailability(path_unavailability, fingerprint_map)
+    templates_map = load_templates(path_templates)
+    events_list = load_events(path_schedule)
 
-    base_demands = build_standard_schedule(path_schedule, path_templates)
-    final_demands = apply_custom_overrides(base_demands, path_custom)
+    base_demands = build_standard_schedule(events_list, templates_map)
+    # final_demands = apply_custom_overrides(base_demands, path_custom)
 
-    print("Data load complete")
-    return members, final_demands, unavailability_map
+    pprint(members_list)
+    pprint(base_demands)
+    pprint(unavailability_map)
+    return members_list, base_demands, unavailability_map
 
 
 if __name__ == "__main__":
-    # load_members("data/membros.csv")
-    load_templates("data/templates.csv")
+    load_data()
