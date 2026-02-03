@@ -9,7 +9,7 @@ class FilesConfig:
     """
 
     members_file: str = "members.csv"
-    unavailability_file: str = "unavailability.csv"
+    unavailabilities_file: str = "unavailabilities.csv"
     schedule_file: str = "schedule.csv"
     templates_file: str = "service_templates.csv"
     custom_demands_file: str = "custom_demands.csv"
