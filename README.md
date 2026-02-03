@@ -48,7 +48,8 @@ flowchart TD
     D -->|load_unavailability| H
     
     F --> I
-    E -->|Lookup Rápido O(1)| I
+    %% CORREÇÃO AQUI: Aspas duplas para proteger os parênteses O(1)
+    E -->|"Lookup Rápido O(1)"| I
     
     I -->|Explode Template + Data + Custom| J
 
