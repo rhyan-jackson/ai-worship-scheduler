@@ -38,7 +38,7 @@ def parse_dates_safely(df: pd.DataFrame, column_name: str = "date") -> pd.DataFr
     if not invalid_rows.empty:
         bad_indices = invalid_rows.index.tolist()
         raise ValueError(
-            f"⛔ DATE ERROR:\n"
+            f"Date error:\n"
             f"The system could not parse dates in the following rows: {bad_indices}.\n"
             f"Please check for typos or ensure the format is correct (DD/MM/YYYY)."
         )
