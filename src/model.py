@@ -11,7 +11,7 @@ class Member(BaseModel):
     max_shifts: int = Field(default=4, ge=0)
 
 
-class AgendaEntry(BaseModel):
+class Event(BaseModel):
     date: date
     event_template: str
 
