@@ -1,191 +1,272 @@
+import logging
 import os
 from datetime import date
-from pprint import pprint
 from typing import Dict, List, Set, Tuple
 
 import pandas as pd
 
-from .config import FilesConfig
+from .config import CsvColumns, FilesConfig
 from .model import Event, EventTemplate, Member, RoleDemand, TemplateRule
 from .utils import get_key_fingerprint, parse_dates_safely
 
+logger = logging.getLogger(__name__)
 DEFAULT_DATA_FOLDER = "data"
 
 
-def load_members(members_csv_filepath: str) -> Tuple[List[Member], Dict[str, int]]:
+class DataLoader:
     """
-    Loads members from a csv file structured as:
-    id,name,roles,max_shifts
-
-    Returns:
-        Tuple containing:
-        1. List[Member]: Members registered in the CSV
-        3. Dict[(fingerprint, id)]: Match between name fingerprint and id used in another tables
+    Service class responsible for loading and coordinating data ingestion.
     """
-    if not os.path.exists(members_csv_filepath):
-        raise FileNotFoundError(f"File not found: {members_csv_filepath}")
 
-    members = []
-    fingerprint_map = {}
-    df = pd.read_csv(members_csv_filepath)
+    def __init__(
+        self,
+        data_folder: str = DEFAULT_DATA_FOLDER,
+        config: FilesConfig = FilesConfig(),
+    ):
+        self.data_folder = data_folder
+        self.config = config
+        self.cols = config.cols
 
-    for _, row in df.iterrows():
-        raw_name = row["name"].strip()
-        fingerprint = get_key_fingerprint(raw_name)
+    def load_members(self, filename: str) -> Tuple[List[Member], Dict[str, int]]:
+        """
+        Loads members from a CSV file.
 
-        if fingerprint in fingerprint_map:
-            raise ValueError(
-                f"Name collision detected in members table.\n"
-                f"The name '{raw_name}' generates the same fingerprint ('{fingerprint}') as an existing member.\n"
-                f"Action Required: Please edit members.csv and make the names distinct\n"
-                f"(e.g., add an instrument or nickname)."
+        Args:
+            filename (str): Name of the CSV file.
+
+        Returns:
+            Tuple containing:
+            1. List[Member]: List of Member objects.
+            2. Dict[str, int]: Map of {fingerprint_name: id} for collision detection.
+        """
+        filepath = os.path.join(self.data_folder, filename)
+
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"File not found: {filepath}")
+
+        members = []
+        fingerprint_map = {}
+        df = pd.read_csv(filepath)
+
+        for _, row in df.iterrows():
+            raw_name = str(row[self.cols.NAME]).strip()
+            fingerprint = get_key_fingerprint(raw_name)
+
+            if fingerprint in fingerprint_map:
+                raise ValueError(
+                    f"Name collision detected in members table. "
+                    f"Name: '{raw_name}' | Fingerprint: '{fingerprint}'. "
+                    f"Action: Edit CSV to ensure distinct names."
+                )
+
+            fingerprint_map[fingerprint] = row[self.cols.ID]
+
+            raw_roles = str(row[self.cols.ROLES])
+            roles = [role.strip() for role in raw_roles.split(";")]
+
+            new_member = Member(
+                id=row[self.cols.ID],
+                name=raw_name,
+                roles=set(roles),
+                max_shifts=row[self.cols.MAX_SHIFTS],
             )
+            members.append(new_member)
 
-        fingerprint_map[fingerprint] = row["id"]
+        logger.info(f"Loaded {len(members)} members.")
+        return members, fingerprint_map
 
-        raw_roles = row["roles"]
-        roles = [role.strip() for role in raw_roles.split(";")]
-        new_member = Member(
-            id=row["id"],
-            name=row["name"],
-            roles=set(roles),
-            max_shifts=row["max_shifts"],
-        )
-        members.append(new_member)
+    def load_unavailability(
+        self, filename: str, fingerprint_map: Dict[str, int]
+    ) -> Set[Tuple[int, date]]:
+        """
+        Loads specific unavailability dates for members.
 
-    return members, fingerprint_map
+        Args:
+            filename (str): Name of the CSV file.
+            fingerprint_map (Dict[str, int]): Mapping to resolve names to member IDs.
 
+        Returns:
+            Set[Tuple[int, date]]: A set of (member_id, date) tuples.
+        """
+        filepath = os.path.join(self.data_folder, filename)
 
-def load_unavailability(
-    unavailability_csv_filepath: str, fingerprint_map: Dict[str, int]
-) -> Set[Tuple[int, date]]:
-    if not os.path.exists(unavailability_csv_filepath):
-        raise FileNotFoundError(f"File not found: {unavailability_csv_filepath}")
-    df = pd.read_csv(unavailability_csv_filepath)
-    df = parse_dates_safely(df, "date")
-
-    unavailabilities = set()
-
-    for _, row in df.iterrows():
-        raw_name = row["name"]
-        day = row["date"]
-
-        search_key = get_key_fingerprint(raw_name)
-        if search_key not in fingerprint_map:
-            raise ValueError(
-                f"Error: Member '{raw_name}' (key: {search_key}) not found in member list."
+        if not os.path.exists(filepath):
+            logger.warning(
+                f"Unavailability file not found: {filepath}. Assuming no blocks."
             )
+            return set()
 
-        member_id = fingerprint_map[search_key]
-        unavailabilities.add((member_id, day))
+        df = pd.read_csv(filepath)
+        df = parse_dates_safely(df, self.cols.DATE)
 
-    return unavailabilities
+        unavailabilities = set()
 
+        for _, row in df.iterrows():
+            raw_name = str(row[self.cols.NAME])
+            day = row[self.cols.DATE]
 
-def load_templates(templates_csv_filepath: str) -> Dict[str, EventTemplate]:
-    df = pd.read_csv(templates_csv_filepath)
-    grouped = df.groupby("event_template")
+            search_key = get_key_fingerprint(raw_name)
+            if search_key not in fingerprint_map:
+                raise ValueError(
+                    f"Member '{raw_name}' found in unavailability list but not in members file."
+                )
 
-    templates = {}
+            member_id = fingerprint_map[search_key]
+            unavailabilities.add((member_id, day))
 
-    for name, group in grouped:
-        rules = []
-        for _, row in group.iterrows():
-            rules.append(
-                TemplateRule(
-                    role=row["role"], min_qty=row["min_qty"], max_qty=row["max_qty"]
+        logger.info(f"Loaded {len(unavailabilities)} unavailability blocks.")
+        return unavailabilities
+
+    def load_templates(self, filename: str) -> Dict[str, EventTemplate]:
+        """
+        Loads service templates defining roles and quantities.
+
+        Args:
+            filename (str): Name of the CSV file.
+
+        Returns:
+            Dict[str, EventTemplate]: Dictionary mapping template names to rule definitions.
+        """
+        filepath = os.path.join(self.data_folder, filename)
+
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"File not found: {filepath}")
+
+        df = pd.read_csv(filepath)
+        grouped = df.groupby(self.cols.EVENT_TEMPLATE)
+
+        templates = {}
+
+        for name, group in grouped:
+            rules = []
+            for _, row in group.iterrows():
+                rules.append(
+                    TemplateRule(
+                        role=row[self.cols.ROLE],
+                        min_qty=int(row[self.cols.MIN_QTY]),
+                        max_qty=int(row[self.cols.MAX_QTY]),
+                    )
+                )
+            clean_name = str(name).strip()
+            templates[clean_name] = EventTemplate(name=clean_name, rules=rules)
+
+        logger.info(f"Loaded {len(templates)} templates.")
+        return templates
+
+    def load_events(self, filename: str) -> List[Event]:
+        """
+        Loads the schedule of events to be planned.
+
+        Args:
+            filename (str): Name of the CSV file.
+
+        Returns:
+            List[Event]: Chronologically sorted list of events.
+        """
+        filepath = os.path.join(self.data_folder, filename)
+
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"File not found: {filepath}")
+
+        df = pd.read_csv(filepath)
+        df = parse_dates_safely(df, self.cols.DATE)
+
+        events = []
+        for _, row in df.iterrows():
+            events.append(
+                Event(
+                    date=row[self.cols.DATE],
+                    event_template=str(row[self.cols.EVENT_TEMPLATE]).strip(),
                 )
             )
-        templates[name] = EventTemplate(name=str(name).strip(), rules=rules)
 
-    return templates
+        return sorted(events, key=lambda x: x.date)
 
+    def build_standard_schedule(
+        self, events_list: List[Event], templates_map: Dict[str, EventTemplate]
+    ) -> List[RoleDemand]:
+        """
+        Generates the list of role demands by applying templates to the scheduled events.
 
-def load_events(events_csv_filepath: str) -> List[Event]:
-    if not os.path.exists(events_csv_filepath):
-        raise FileNotFoundError(f"File not found: {events_csv_filepath}")
-    df = pd.read_csv(events_csv_filepath)
-    df = parse_dates_safely(df, "date")
+        Args:
+            events_list (List[Event]): The list of scheduled events.
+            templates_map (Dict[str, EventTemplate]): Definitions of event requirements.
 
-    events = []
+        Returns:
+            List[RoleDemand]: Flat list of all slots needed.
+        """
+        demands = []
+        for event in events_list:
+            template = templates_map.get(event.event_template)
+            if not template:
+                raise ValueError(
+                    f"Configuration Error: Event on {event.date} calls for template "
+                    f"'{event.event_template}', but it is not defined in templates file."
+                )
 
-    for _, row in df.iterrows():
-        events.append(
-            Event(date=row["date"], event_template=row["event_template"].strip())
+            for rule in template.rules:
+                demands.append(
+                    RoleDemand(
+                        date=event.date,
+                        event_type=template.name,
+                        role=rule.role,
+                        min_qty=rule.min_qty,
+                        max_qty=rule.max_qty,
+                        source="Template",
+                    )
+                )
+
+        return demands
+
+    def apply_custom_overrides(
+        self, demands: List[RoleDemand], filename: str
+    ) -> List[RoleDemand]:
+        """
+        Applies manual overrides (add/remove/modify) to the generated schedule.
+        """
+        # Logic to be implemented
+        return demands
+
+    def load_all(self) -> Tuple[List[Member], List[RoleDemand], Set[Tuple[int, date]]]:
+        """
+        Orchestrates the loading of all project data.
+
+        Returns:
+            Tuple containing Members, Demands, and Unavailabilities.
+        """
+        logger.info(f"Start loading data from {self.data_folder}")
+
+        members_list, fingerprint_map = self.load_members(self.config.members_file)
+
+        unavailability_map = self.load_unavailability(
+            self.config.unavailabilities_file, fingerprint_map
         )
 
-    return sorted(events, key=lambda x: x.date)
+        templates_map = self.load_templates(self.config.templates_file)
+        events_list = self.load_events(self.config.schedule_file)
 
+        base_demands = self.build_standard_schedule(events_list, templates_map)
+        final_demands = self.apply_custom_overrides(
+            base_demands, self.config.custom_demands_file
+        )
 
-def build_standard_schedule(
-    events_list: List[Event], templates_map: Dict[str, EventTemplate]
-) -> List[RoleDemand]:
-    demands = []
-    for event in events_list:
-        template = templates_map.get(event.event_template)
-        if not template:
-            raise ValueError(
-                f"There's no registered template with name {template}, used in event at {event.date}"
-            )
-
-        for rule in template.rules:
-            demand = RoleDemand(
-                date=event.date,
-                event_type=template.name,
-                role=rule.role,
-                min_qty=rule.min_qty,
-                max_qty=rule.max_qty,
-            )
-            demands.append(demand)
-
-    return demands
-
-
-def apply_custom_overrides(
-    demands: List[RoleDemand], custom_overrides_csv_filepath: str
-) -> List[RoleDemand]:
-    df = pd.read_csv(custom_overrides_csv_filepath)
-    pass
+        logger.info(
+            f"Data load complete. Members: {len(members_list)}, "
+            f"Demands: {len(final_demands)}"
+        )
+        return members_list, final_demands, unavailability_map
 
 
 def load_data(
-    data_folder: str = DEFAULT_DATA_FOLDER, config: FilesConfig = FilesConfig()
+    data_folder: str = DEFAULT_DATA_FOLDER,
 ) -> Tuple[List[Member], List[RoleDemand], Set[Tuple[int, date]]]:
     """
-    Orchestrates the loading of all project data.
-
-    Args:
-        data_folder (str): The directory containing the CSV files.
-        config (FilesConfig): File name configuration. Uses English defaults if not provided.
-
-    Returns:
-        Tuple containing:
-        1. List[Member]: Resources available.
-        2. List[RoleDemand]: The slots/jobs that need to be filled.
-        3. Dict[(id, date), bool]: Fast lookup for unavailability constraints.
+    Wrapper function for backward compatibility.
     """
-    print(f"Start loading data from {data_folder}")
-
-    path_members = os.path.join(data_folder, config.members_file)
-    path_unavailability = os.path.join(data_folder, config.unavailabilities_file)
-    path_schedule = os.path.join(data_folder, config.schedule_file)
-    path_templates = os.path.join(data_folder, config.templates_file)
-    path_custom = os.path.join(data_folder, config.custom_demands_file)
-
-    members_list, fingerprint_map = load_members(path_members)
-
-    unavailability_map = load_unavailability(path_unavailability, fingerprint_map)
-    templates_map = load_templates(path_templates)
-    events_list = load_events(path_schedule)
-
-    base_demands = build_standard_schedule(events_list, templates_map)
-    # final_demands = apply_custom_overrides(base_demands, path_custom)
-
-    pprint(members_list)
-    pprint(base_demands)
-    pprint(unavailability_map)
-    return members_list, base_demands, unavailability_map
+    loader = DataLoader(data_folder=data_folder)
+    return loader.load_all()
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     load_data()
