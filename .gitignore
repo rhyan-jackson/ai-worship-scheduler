@@ -1,6 +1,7 @@
 # Personal
 activate
 .python-version
+.vscode
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
