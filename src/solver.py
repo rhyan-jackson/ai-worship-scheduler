@@ -67,15 +67,51 @@ class ServiceSolver:
 
     def _add_demand_constraints(self):
         """
-        Adds Hard Constraints for role quantity satisfaction.
+        Orchestrator: Ensures all demand-related quantity rules are applied.
+        Delegates specific rules to specialized private methods.
+        """
+        self._add_min_quantity_constraints()
+        self._add_max_quantity_constraints()
+
+    def _add_min_quantity_constraints(self):
+        """
+        Adds Hard Constraints for minimum role quantity.
 
         Logic:
-        - For each demand 'd':
-        - Gather all variables X[m, d] (all members capable of doing this demand).
-        - Constraint: sum(X[*, d]) >= demand.min_qty
-        - Constraint: sum(X[*, d]) <= demand.max_qty
+        - Iterates through all demands.
+        - For each demand 'd', identifies which members 'm' have a variable X[m, d].
+        - Adds constraint: sum(X[*, d]) >= demand.min_qty
         """
-        pass
+
+        for d_idx, d in enumerate(self.demands):
+            if not d.is_mandatory:
+                continue
+
+            vars = [
+                self.shifts[(m_idx, d_idx)]
+                for m_idx, _ in enumerate(self.members)
+                if (m_idx, d_idx) in self.shifts
+            ]
+
+            self.model.Add(sum(vars) >= d.min_qty)
+
+    def _add_max_quantity_constraints(self):
+        """
+        Adds Hard Constraints for maximum role quantity.
+
+        Logic:
+        - Iterates through all demands.
+        - For each demand 'd', identifies which members 'm' have a variable X[m, d].
+        - Adds constraint: sum(X[*, d]) <= demand.max_qty
+        """
+        for d_idx, d in enumerate(self.demands):
+            vars = [
+                self.shifts[(m_idx, d_idx)]
+                for m_idx, _ in enumerate(self.members)
+                if (m_idx, d_idx) in self.shifts
+            ]
+
+            self.model.Add(sum(vars) <= d.max_qty)
 
     def _add_daily_uniqueness_constraints(self):
         """
@@ -88,7 +124,21 @@ class ServiceSolver:
         - Constraint: sum(X[m, *]) <= 1
         (A member can perform at most 1 task per day).
         """
-        pass
+
+        demand_by_date = {}
+        for dmnd_id, demand in enumerate(self.demands):
+            if demand.date not in demand_by_date:
+                demand_by_date[demand.date] = []
+
+            demand_by_date[demand.date].append(dmnd_id)
+
+        for dt, d_ids in demand_by_date.items():
+            for m_id, member in enumerate(self.members):
+                vars = []
+                for dmnd_id in d_ids:
+                    if (m_id, dmnd_id) in self.shifts:
+                        vars.append(self.shifts[(m_id, dmnd_id)])
+                self.model.Add(sum(vars) <= 1)
 
     def _add_rolling_window_constraints(self):
         """
@@ -114,6 +164,21 @@ class ServiceSolver:
         promoting a balanced distribution.
         """
         pass
+
+    def solve(self):
+        """
+        Executes the solver engine.
+        Returns:
+            The status of the solution (OPTIMAL, FEASIBLE, INFEASIBLE, etc.)
+        """
+
+        self.solver = cp_model.CpSolver()
+        # Defines max time or log
+        # self.solver.parameters.max_time_in_seconds = 10.0
+        # self.solver.parameters.log_search_progress = True
+
+        status = self.solver.Solve(self.model)
+        return status
 
 
 if __name__ == "__main__":
