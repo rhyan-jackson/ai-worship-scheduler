@@ -1,0 +1,11 @@
+event_template,role,min_qty,max_qty
+Domingo,Vocal,2,3
+Domingo,Bateria,1,1
+Domingo,Teclado,1,1
+Domingo,Baixo,1,1
+Domingo,Guitarra,0,1
+Domingo,Sonoplastia,1,2
+Jovens,Vocal,1,2
+Jovens,Violao,1,1
+Jovens,Bateria,1,1
+Jovens,Sonoplastia,1,1
