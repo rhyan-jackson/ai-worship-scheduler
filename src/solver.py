@@ -43,7 +43,7 @@ class ServiceSolver:
         # Hard Constraints
         self._add_demand_constraints()
         self._add_daily_uniqueness_constraints()
-        # self._add_rolling_window_constraints()
+        self._add_rolling_window_constraints()
 
         # Objective (Soft Constraints)
         self._set_objective()
@@ -160,8 +160,8 @@ class ServiceSolver:
         for dt, d_ids in demand_by_date.items():
             for m_id, member in enumerate(self.members):
                 shift_vars = self._get_member_shifts(m_id, d_ids)
-        if shift_vars:
-            self.model.Add(sum(shift_vars) <= 1)
+            if shift_vars:
+                self.model.Add(sum(shift_vars) <= 1)
 
     def _add_rolling_window_constraints(self):
         """
