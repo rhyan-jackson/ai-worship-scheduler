@@ -1,7 +1,7 @@
 import csv
 import logging
 import unicodedata
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Dict, Optional
 
 import pandas as pd
@@ -38,7 +38,7 @@ def get_key_fingerprint(name: str) -> str:
 
 def parse_dates_safely(df: pd.DataFrame, column_name: str = "date") -> pd.DataFrame:
     df[column_name] = pd.to_datetime(
-        df[column_name], format="%d-%m-%Y", errors="coerce"
+        df[column_name], format="%d/%m/%Y", errors="coerce"
     )
 
     invalid_rows = df[df[column_name].isna()]
@@ -54,6 +54,17 @@ def parse_dates_safely(df: pd.DataFrame, column_name: str = "date") -> pd.DataFr
     df[column_name] = df[column_name].dt.date  # type: ignore
 
     return df
+
+
+def parse_date_safely(date_str: str) -> date:
+    """Parses a single string date in DD-MM-YYYY format using standard datetime."""
+    try:
+        return datetime.strptime(date_str, "%d/%m/%Y").date()
+    except ValueError:
+        raise ValueError(
+            f"Invalid date format: '{date_str}'. "
+            "Please ensure the format is DD/MM/YYYY."
+        ) from None
 
 
 def generate_schedule_skeleton(
@@ -89,7 +100,7 @@ def generate_schedule_skeleton(
 
             rows.append(
                 {
-                    config.cols.DATE: current_date.strftime("%d-%m-%Y"),
+                    config.cols.DATE: current_date.strftime("%d/%m/%Y"),
                     config.cols.EVENT_TEMPLATE: template_name,
                 }
             )

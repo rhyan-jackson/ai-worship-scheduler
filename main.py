@@ -57,6 +57,8 @@ def main():
         export_raw_result(raw_solution, config=config)
         preview_raw(raw_solution)
 
+        # Export to final version
+
     except Exception as e:
         logger.critical(f"Critical Failure: {e}", exc_info=True)
         sys.exit(1)
