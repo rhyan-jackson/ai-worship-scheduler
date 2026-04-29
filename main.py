@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.config import AppConfig
-from src.exporter import export_raw_result, preview_raw
+from src.exporter import export_formatted_schedule, export_raw_result
 from src.loader import load_data
 from src.solver import ServiceSolver
 
@@ -55,9 +55,9 @@ def main():
 
         # Export to CSV the RAW result
         export_raw_result(raw_solution, config=config)
-        preview_raw(raw_solution)
 
-        # Export to final version
+        # Export to final formatted Excel version
+        export_formatted_schedule(raw_solution, config=config)
 
     except Exception as e:
         logger.critical(f"Critical Failure: {e}", exc_info=True)

@@ -45,6 +45,7 @@ class ServiceSolver:
         self._add_demand_constraints()
         self._add_daily_uniqueness_constraints()
         self._add_rolling_window_constraints()
+        self._add_base_role_uniqueness_constraints()
 
         # Objective (Soft Constraints)
         self._set_objective()
@@ -161,8 +162,27 @@ class ServiceSolver:
         for dt, d_ids in demand_by_date.items():
             for m_id, member in enumerate(self.members):
                 shift_vars = self._get_member_shifts(m_id, d_ids)
-            if shift_vars:
-                self.model.Add(sum(shift_vars) <= 1)
+                if shift_vars:
+                    self.model.Add(sum(shift_vars) <= 1)
+
+    def _add_base_role_uniqueness_constraints(self):
+        """
+        Ensures a member cannot occupy multiple slots of the same base role
+        on the same day and event (e.g., cannot be both Sonoplasta 1 and Sonoplasta 2).
+        """
+        grouped_demands = {}
+        for d_idx, demand in enumerate(self.demands):
+            key = (demand.date, demand.event_type, demand.base_role)
+            if key not in grouped_demands:
+                grouped_demands[key] = []
+            grouped_demands[key].append(d_idx)
+
+        for key, d_ids in grouped_demands.items():
+            if len(d_ids) > 1:
+                for m_id, member in enumerate(self.members):
+                    shift_vars = self._get_member_shifts(m_id, d_ids)
+                    if len(shift_vars) > 1:
+                        self.model.Add(sum(shift_vars) <= 1)
 
     def _add_rolling_window_constraints(self):
         """
@@ -201,8 +221,7 @@ class ServiceSolver:
                     dmnd_ids.add(dmnd_id)
 
             for m_id, member in enumerate(self.members):
-                for dmnd_id in dmnd_ids:
-                    shift_vars = self._get_member_shifts(m_id, dmnd_ids)
+                shift_vars = self._get_member_shifts(m_id, dmnd_ids)
                 if shift_vars:
                     self.model.Add(sum(shift_vars) <= member.max_shifts)
 
