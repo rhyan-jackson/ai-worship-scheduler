@@ -1,6 +1,14 @@
+import csv
+import logging
 import unicodedata
+from datetime import date, timedelta
+from typing import Dict, Optional
 
 import pandas as pd
+
+from .config import AppConfig, Weekday
+
+logger = logging.getLogger(__name__)
 
 
 def get_key_fingerprint(name: str) -> str:
@@ -46,3 +54,66 @@ def parse_dates_safely(df: pd.DataFrame, column_name: str = "date") -> pd.DataFr
     df[column_name] = df[column_name].dt.date  # type: ignore
 
     return df
+
+
+def generate_schedule_skeleton(
+    start_date: date,
+    end_date: date,
+    config: AppConfig,
+    weekday_selection: Optional[Dict[int, str]] = None,
+):
+    """
+    Generates a CSV file with strictly 'date' and 'event_template'.
+    """
+    if weekday_selection is None:
+        weekday_selection = {
+            # Weekday.MONDAY: "Segunda",
+            # Weekday.TUESDAY: "Terça",
+            Weekday.WEDNESDAY: "Quarta",
+            # Weekday.THURSDAY: "Quinta",
+            # Weekday.FRIDAY: "Sexta",
+            # Weekday.SATURDAY: "Sábado",
+            Weekday.SUNDAY: "Domingo",
+        }
+
+    logger.info(f"Generating schedule skeleton from {start_date} to {end_date}...")
+
+    rows = []
+    current_date = start_date
+
+    while current_date <= end_date:
+        weekday = current_date.weekday()
+
+        if weekday in weekday_selection:
+            template_name = weekday_selection[weekday]
+
+            rows.append(
+                {
+                    config.cols.DATE: current_date.strftime("%d-%m-%Y"),
+                    config.cols.EVENT_TEMPLATE: template_name,
+                }
+            )
+
+        current_date += timedelta(days=1)
+
+    output_file = config.data_dir / config.schedule_file
+
+    if not output_file.parent.exists():
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Created directory: {output_file.parent}")
+
+    if rows:
+        fieldnames = [config.cols.DATE, config.cols.EVENT_TEMPLATE]
+
+        try:
+            with open(output_file, mode="w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+
+            logger.info(f"Success! {len(rows)} entries generated in '{output_file}'.")
+
+        except IOError as e:
+            logger.error(f"Error writing to file: {e}")
+    else:
+        logger.warning("No dates found matching the current configuration.")
