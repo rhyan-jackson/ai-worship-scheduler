@@ -3,6 +3,7 @@ from datetime import date
 from pprint import pprint
 from typing import Dict, List, Set, Tuple
 
+import pandas as pd
 from ortools.sat.python import cp_model
 
 from .loader import load_data
@@ -233,7 +234,7 @@ class ServiceSolver:
 
         self.model.Minimize(sum(total_squared_loads))
 
-    def solve(self) -> List[Dict]:
+    def solve(self) -> pd.DataFrame:
         """
         Executes the solver engine and extracts the schedule.
 
@@ -274,7 +275,7 @@ class ServiceSolver:
         logger.info(f"Optimization successful. Scheduled {len(schedule)} assignments.")
 
         # Sort by date for readability
-        return sorted(schedule, key=lambda x: x["date"])
+        return pd.DataFrame(schedule).sort_values(by="date")
 
 
 if __name__ == "__main__":

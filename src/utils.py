@@ -30,7 +30,7 @@ def get_key_fingerprint(name: str) -> str:
 
 def parse_dates_safely(df: pd.DataFrame, column_name: str = "date") -> pd.DataFrame:
     df[column_name] = pd.to_datetime(
-        df[column_name], dayfirst=True, format="mixed", errors="coerce"
+        df[column_name], format="%d-%m-%Y", errors="coerce"
     )
 
     invalid_rows = df[df[column_name].isna()]

@@ -1,16 +1,14 @@
 import logging
-import os
 from datetime import date
 from typing import Dict, List, Set, Tuple
 
 import pandas as pd
 
-from .config import CsvColumns, FilesConfig
+from .config import AppConfig
 from .model import Event, EventTemplate, Member, RoleDemand, TemplateRule
 from .utils import get_key_fingerprint, parse_dates_safely
 
 logger = logging.getLogger(__name__)
-DEFAULT_DATA_FOLDER = "data"
 
 
 class DataLoader:
@@ -18,30 +16,22 @@ class DataLoader:
     Service class responsible for loading and coordinating data ingestion.
     """
 
-    def __init__(
-        self,
-        data_folder: str = DEFAULT_DATA_FOLDER,
-        config: FilesConfig = FilesConfig(),
-    ):
-        self.data_folder = data_folder
-        self.config = config
-        self.cols = config.cols
+    def __init__(self, config: AppConfig | None = None):
+        self.config = config or AppConfig()
+        self.cols = self.config.cols
 
-    def load_members(self, filename: str) -> Tuple[List[Member], Dict[str, int]]:
+    def load_members(self) -> Tuple[List[Member], Dict[str, int]]:
         """
         Loads members from a CSV file.
-
-        Args:
-            filename (str): Name of the CSV file.
 
         Returns:
             Tuple containing:
             1. List[Member]: List of Member objects.
             2. Dict[str, int]: Map of {fingerprint_name: id} for collision detection.
         """
-        filepath = os.path.join(self.data_folder, filename)
+        filepath = self.config.data_dir / self.config.members_file
 
-        if not os.path.exists(filepath):
+        if not filepath.exists():
             raise FileNotFoundError(f"File not found: {filepath}")
 
         members = []
@@ -76,21 +66,20 @@ class DataLoader:
         return members, fingerprint_map
 
     def load_unavailability(
-        self, filename: str, fingerprint_map: Dict[str, int]
+        self, fingerprint_map: Dict[str, int]
     ) -> Set[Tuple[int, date]]:
         """
         Loads specific unavailability dates for members.
 
         Args:
-            filename (str): Name of the CSV file.
             fingerprint_map (Dict[str, int]): Mapping to resolve names to member IDs.
 
         Returns:
             Set[Tuple[int, date]]: A set of (member_id, date) tuples.
         """
-        filepath = os.path.join(self.data_folder, filename)
+        filepath = self.config.data_dir / self.config.unavailabilities_file
 
-        if not os.path.exists(filepath):
+        if not filepath.exists():
             logger.warning(
                 f"Unavailability file not found: {filepath}. Assuming no blocks."
             )
@@ -117,19 +106,16 @@ class DataLoader:
         logger.info(f"Loaded {len(unavailabilities)} unavailability blocks.")
         return unavailabilities
 
-    def load_templates(self, filename: str) -> Dict[str, EventTemplate]:
+    def load_templates(self) -> Dict[str, EventTemplate]:
         """
         Loads service templates defining roles and quantities.
-
-        Args:
-            filename (str): Name of the CSV file.
 
         Returns:
             Dict[str, EventTemplate]: Dictionary mapping template names to rule definitions.
         """
-        filepath = os.path.join(self.data_folder, filename)
+        filepath = self.config.data_dir / self.config.templates_file
 
-        if not os.path.exists(filepath):
+        if not filepath.exists():
             raise FileNotFoundError(f"File not found: {filepath}")
 
         df = pd.read_csv(filepath)
@@ -153,19 +139,16 @@ class DataLoader:
         logger.info(f"Loaded {len(templates)} templates.")
         return templates
 
-    def load_events(self, filename: str) -> List[Event]:
+    def load_events(self) -> List[Event]:
         """
         Loads the schedule of events to be planned.
-
-        Args:
-            filename (str): Name of the CSV file.
 
         Returns:
             List[Event]: Chronologically sorted list of events.
         """
-        filepath = os.path.join(self.data_folder, filename)
+        filepath = self.config.data_dir / self.config.schedule_file
 
-        if not os.path.exists(filepath):
+        if not filepath.exists():
             raise FileNotFoundError(f"File not found: {filepath}")
 
         df = pd.read_csv(filepath)
@@ -218,9 +201,7 @@ class DataLoader:
 
         return demands
 
-    def apply_custom_overrides(
-        self, demands: List[RoleDemand], filename: str
-    ) -> List[RoleDemand]:
+    def apply_custom_overrides(self, demands: List[RoleDemand]) -> List[RoleDemand]:
         """
         Applies manual overrides (add/remove/modify) to the generated schedule.
         """
@@ -234,21 +215,17 @@ class DataLoader:
         Returns:
             Tuple containing Members, Demands, and Unavailabilities.
         """
-        logger.info(f"Start loading data from {self.data_folder}")
+        logger.info(f"Start loading data from {self.config.data_dir}")
 
-        members_list, fingerprint_map = self.load_members(self.config.members_file)
+        members_list, fingerprint_map = self.load_members()
 
-        unavailability_map = self.load_unavailability(
-            self.config.unavailabilities_file, fingerprint_map
-        )
+        unavailability_map = self.load_unavailability(fingerprint_map)
 
-        templates_map = self.load_templates(self.config.templates_file)
-        events_list = self.load_events(self.config.schedule_file)
+        templates_map = self.load_templates()
+        events_list = self.load_events()
 
         base_demands = self.build_standard_schedule(events_list, templates_map)
-        final_demands = self.apply_custom_overrides(
-            base_demands, self.config.custom_demands_file
-        )
+        final_demands = self.apply_custom_overrides(base_demands)
 
         logger.info(
             f"Data load complete. Members: {len(members_list)}, "
@@ -258,12 +235,12 @@ class DataLoader:
 
 
 def load_data(
-    data_folder: str = DEFAULT_DATA_FOLDER,
+    config: AppConfig | None = None,
 ) -> Tuple[List[Member], List[RoleDemand], Set[Tuple[int, date]]]:
     """
     Wrapper function for backward compatibility.
     """
-    loader = DataLoader(data_folder=data_folder)
+    loader = DataLoader(config=config)
     return loader.load_all()
 
 

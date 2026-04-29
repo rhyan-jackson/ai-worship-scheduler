@@ -2,10 +2,10 @@ import logging
 import sys
 from pathlib import Path
 
-import pandas as pd
-
 sys.path.append(str(Path(__file__).parent.parent))
 
+from src.config import AppConfig
+from src.exporter import export_raw_result, preview_raw
 from src.loader import load_data
 from src.solver import ServiceSolver
 
@@ -25,8 +25,11 @@ def main():
     logger.info("Starting Worship Scheduler Application...")
 
     try:
+        # Initialize centralized config
+        config = AppConfig()
+
         # Load Data
-        members, demands, unavailability = load_data()
+        members, demands, unavailability = load_data(config=config)
         logger.info(
             f"Data loaded successfully. {len(members)} members, {len(demands)} demands."
         )
@@ -40,30 +43,19 @@ def main():
 
         # Solve
         logger.info("Solving... (this might take a moment)")
-        schedule = solver.solve()
+        raw_solution = solver.solve()
 
         # Handle Output
-        if not schedule:
-            logger.warning(
+        if raw_solution.empty:
+            raise Exception(
                 "No feasible solution found! Please check constraints or member availability."
             )
-        else:
-            logger.info(f"Optimization Success! Generated {len(schedule)} assignments.")
 
-            # Export to CSV using Pandas
-            df = pd.DataFrame(schedule)
-            output_file = "final_schedule.csv"
+        logger.info(f"Optimization Success! Generated {len(raw_solution)} assignments.")
 
-            # Reorder columns for better reading
-            cols = ["date", "event", "role", "member_name", "member_id"]
-            df = df[cols]
-
-            df.to_csv(output_file, index=False)
-            logger.info(f"Schedule saved to: {output_file}")
-
-            # Optional: Print preview
-            print("\n--- Schedule Preview ---")
-            print(df.head(10).to_markdown(index=False))
+        # Export to CSV the RAW result
+        export_raw_result(raw_solution, config=config)
+        preview_raw(raw_solution)
 
     except Exception as e:
         logger.critical(f"Critical Failure: {e}", exc_info=True)

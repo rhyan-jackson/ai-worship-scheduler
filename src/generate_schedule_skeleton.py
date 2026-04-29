@@ -6,8 +6,8 @@ from typing import Dict, List
 # --- CONFIGURATION ---
 
 # 1. Define the period you want to generate
-START_DATE = date(2025, 3, 1)
-END_DATE = date(2025, 3, 31)
+START_DATE = date(2026, 4, 1)
+END_DATE = date(2026, 5, 3)
 
 # 2. Define the days of the week and the Template Name
 # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
@@ -46,7 +46,7 @@ def generate_schedule_skeleton():
             # Strictly the columns you requested
             rows.append(
                 {
-                    "date": current_date.strftime("%Y-%m-%d"),
+                    "date": current_date.strftime("%d-%m-%Y"),
                     "event_template": template_name,
                 }
             )

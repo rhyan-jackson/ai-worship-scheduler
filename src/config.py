@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -23,11 +24,16 @@ class CsvColumns:
     MIN_QTY: str = "min_qty"
     MAX_QTY: str = "max_qty"
 
+    # Exporter Output Columns
+    EVENT: str = "event"
+    MEMBER_NAME: str = "member_name"
+    MEMBER_ID: str = "member_id"
+
 
 @dataclass
-class FilesConfig:
+class AppConfig:
     """
-    Configuration class defining expected file names and column structure.
+    Central Application Configuration.
     """
 
     # File Names
@@ -36,6 +42,13 @@ class FilesConfig:
     schedule_file: str = "schedule.csv"
     templates_file: str = "service_templates.csv"
     custom_demands_file: str = "custom_demands.csv"
+    output_file: str = "schedule_solution.csv"
+
+    # Directories
+    base_dir: Path = Path(__file__).parent.parent
+    data_dir: Path = base_dir / "data"
+    out_dir: Path = base_dir / "out"
+    intermediary_dir: Path = out_dir / "processed"
 
     # Column Definitions (Nested Configuration)
     cols: CsvColumns = field(default_factory=CsvColumns)
