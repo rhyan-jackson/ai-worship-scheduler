@@ -6,8 +6,8 @@ from .config import AppConfig, Weekday
 from .utils import generate_schedule_skeleton
 
 # Define the period you want to generate
-START_DATE = date(2026, 4, 1)
-END_DATE = date(2026, 5, 3)
+START_DATE = date(2026, 5, 4)
+END_DATE = date(2026, 6, 7)
 
 # Define the days of the week and the Template Name
 WEEKDAY_CONFIG: Dict[int, str] = {

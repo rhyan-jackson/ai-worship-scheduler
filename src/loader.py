@@ -188,16 +188,32 @@ class DataLoader:
                 )
 
             for rule in template.rules:
-                demands.append(
-                    RoleDemand(
-                        date=event.date,
-                        event_type=template.name,
-                        role=rule.role,
-                        min_qty=rule.min_qty,
-                        max_qty=rule.max_qty,
-                        source="Template",
+                if rule.max_qty > 1:
+                    for i in range(1, rule.max_qty + 1):
+                        slot_min_qty = 1 if i <= rule.min_qty else 0
+                        demands.append(
+                            RoleDemand(
+                                date=event.date,
+                                event_type=template.name,
+                                role=f"{rule.role} {i}",
+                                base_role=rule.role,
+                                min_qty=slot_min_qty,
+                                max_qty=1,
+                                source="Template",
+                            )
+                        )
+                else:
+                    demands.append(
+                        RoleDemand(
+                            date=event.date,
+                            event_type=template.name,
+                            role=f"{rule.role} 1",
+                            base_role=rule.role,
+                            min_qty=rule.min_qty,
+                            max_qty=rule.max_qty,
+                            source="Template",
+                        )
                     )
-                )
 
         return demands
 

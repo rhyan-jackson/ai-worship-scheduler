@@ -39,6 +39,7 @@ class RoleDemand(BaseModel):
     date: date
     event_type: str
     role: str
+    base_role: str
     min_qty: int = Field(ge=0)
     max_qty: int
     source: str = "Template"

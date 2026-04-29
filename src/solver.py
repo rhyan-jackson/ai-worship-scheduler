@@ -65,7 +65,7 @@ class ServiceSolver:
         for m_idx, member in enumerate(self.members):
             for d_idx, demand in enumerate(self.demands):
                 # Competence
-                member_can_execute = demand.role in member.roles
+                member_can_execute = demand.base_role in member.roles
 
                 # Availability
                 member_is_available = (

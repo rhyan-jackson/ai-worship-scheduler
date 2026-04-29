@@ -61,19 +61,7 @@ def view_schedule():
         pivot_df.columns.name = None
         pivot_df = pivot_df.reset_index()
 
-        # 2. Dividir a coluna Sonoplastia em Sonoplasta 1 e 2
-        if "Sonoplastia" in pivot_df.columns:
-            split_cols = pivot_df["Sonoplastia"].str.split(", ", expand=True)
-            pivot_df["Sonoplasta 1"] = split_cols[0]
-
-            # Verifica se existe uma segunda pessoa em algum dia
-            if split_cols.shape[1] > 1:
-                pivot_df["Sonoplasta 2"] = split_cols[1].fillna("-")
-            else:
-                pivot_df["Sonoplasta 2"] = "-"
-
-            # Remover a coluna unida original
-            pivot_df = pivot_df.drop("Sonoplastia", axis=1)
+        # Roles already separated by slots in solver (e.g. Sonoplastia 1, Sonoplastia 2)
 
         # Determinar o mês base (pega a primeira data da escala)
         mes_base = pivot_df["date"].iloc[0].month if not pivot_df.empty else 1
@@ -133,41 +121,25 @@ def view_schedule():
             # -- Aplicação das Cores (Formatação Condicional) --
             linha_fim = len(pivot_df) + 1
 
-            # Localizar onde estão as colunas dos sonoplastas dinamicamente
-            col_s1 = pivot_df.columns.get_loc("Sonoplasta 1")
-            col_s2 = pivot_df.columns.get_loc("Sonoplasta 2")
-
             for membro, hex_cor in CORES_MEMBROS.items():
                 fmt_cor = workbook.add_format(
                     {"bg_color": hex_cor, "font_color": "black"}
                 )
 
-                # Aplica a cor na coluna Sonoplasta 1
-                worksheet.conditional_format(
-                    2,
-                    col_s1,
-                    linha_fim,
-                    col_s1,
-                    {
-                        "type": "cell",
-                        "criteria": "==",
-                        "value": f'"{membro}"',
-                        "format": fmt_cor,
-                    },
-                )
-                # Aplica a cor na coluna Sonoplasta 2
-                worksheet.conditional_format(
-                    2,
-                    col_s2,
-                    linha_fim,
-                    col_s2,
-                    {
-                        "type": "cell",
-                        "criteria": "==",
-                        "value": f'"{membro}"',
-                        "format": fmt_cor,
-                    },
-                )
+                # Aplica a cor em todas as colunas de cargos (da coluna 2 em diante)
+                for col_idx in range(2, len(pivot_df.columns)):
+                    worksheet.conditional_format(
+                        2,
+                        col_idx,
+                        linha_fim,
+                        col_idx,
+                        {
+                            "type": "cell",
+                            "criteria": "==",
+                            "value": f'"{membro}"',
+                            "format": fmt_cor,
+                        },
+                    )
 
             worksheet.autofit()
 
